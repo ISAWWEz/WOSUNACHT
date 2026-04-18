@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wosunacth</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #111b21; color: #e9edef; margin: 0; display: flex; justify-content: center; height: 100vh; }
+        #app { width: 100%; max-width: 450px; background: #222e35; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        
+        .screen { display: none; flex-direction: column; height: 100%; }
+        .active { display: flex; }
+
+        /* Açılış Ekranı Stili */
+        #splash-screen { 
+            background: #111b21; 
+            align-items: center; 
+            justify-content: center; 
+            text-align: center;
+        }
+        #splash-screen img { width: 150px; height: 150px; border-radius: 20px; margin-bottom: 20px; }
+
+        header { background: #202c33; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #313d45; }
+        .btn { background: #00a884; color: #111b21; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        .search-box { padding: 10px; background: #111b21; }
+        input { width: 100%; padding: 10px; background: #2a3942; border: none; color: white; border-radius: 8px; box-sizing: border-box; outline: none; }
+
+        .list-container { flex: 1; overflow-y: auto; }
+        .item { padding: 15px; border-bottom: 1px solid #313d45; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .item:hover { background: #2c3943; }
+        .id-text { font-size: 11px; color: #8696a0; }
+
+        #chat-messages { flex: 1; padding: 15px; overflow-y: auto; background-color: #0b141a; display: flex; flex-direction: column; }
+        .bubble { padding: 8px 12px; border-radius: 8px; margin: 5px 0; max-width: 70%; word-wrap: break-word; font-size: 14px; }
+        .sent { background: #005c4b; align-self: flex-end; }
+        .received { background: #202c33; align-self: flex-start; }
+
+        .stories { display: flex; padding: 10px; gap: 10px; overflow-x: auto; background: #111b21; border-bottom: 1px solid #313d45; }
+        .story-circle { min-width: 55px; height: 55px; border-radius: 50%; border: 2px solid #00a884; display: flex; align-items: center; justify-content: center; font-size: 10px; text-align: center; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div id="splash-screen" class="screen active">
+        <img src="acilis.webp" alt="Wosunacth Logo">
+        <h1 style="color:#00a884;">Wosunacth</h1>
+        <p style="color:#8696a0;">Yükleniyor...</p>
+    </div>
+
+    <div id="login-screen" class="screen">
+        <div style="padding: 40px; text-align: center; margin-top: auto; margin-bottom: auto;">
+            <h1 style="color:#00a884; font-size: 40px;">Hoş Geldin</h1>
+            <p>Numaranızı belirleyerek başlayın</p>
+            <input type="number" id="my-number" placeholder="Örn: 5051234567">
+            <button class="btn" style="margin-top: 20px; width: 100%; height: 45px;" onclick="startApp()">Numarayı Kaydet</button>
+        </div>
+    </div>
+
+    <div id="main-screen" class="screen">
+        <header>
+            <div id="user-info"></div>
+            <button class="btn" onclick="logout()">Çıkış</button>
+        </header>
+
+        <div class="stories" id="story-list">
+            <div class="story-circle" onclick="addStory()">+ Durum</div>
+        </div>
+
+        <div class="search-box">
+            <input type="number" id="search-id" placeholder="Arkadaşının numarasını yaz ve Enter'a bas..." onkeypress="handleSearch(event)">
+        </div>
+
+        <div class="list-container" id="contact-list"></div>
+    </div>
+
+    <div id="chat-screen" class="screen">
+        <header>
+            <button class="btn" onclick="goBack()">←</button>
+            <span id="chat-title">Sohbet</span>
+            <span id="conn-status" style="font-size: 10px; color: #8696a0;">Bekleniyor...</span>
+        </header>
+        <div id="chat-messages"></div>
+        <div style="padding: 10px; background: #202c33; display: flex; gap: 10px;">
+            <input type="text" id="msg-input" placeholder="Mesaj yazın...">
+            <button class="btn" onclick="sendMsg()">➤</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let myData = JSON.parse(localStorage.getItem('wos_me')) || null;
+    let myFriends = JSON.parse(localStorage.getItem('wos_friends')) || [];
+    let currentChatIndex = null;
+    let peer;
+    let activeConn;
+
+    // Açılış Ekranı Zamanlayıcısı (3 saniye sonra yönlendirir)
+    window.onload = () => {
+        setTimeout(() => {
+            if (myData) {
+                initPeer();
+                loadMain();
+            } else {
+                showScreen('login-screen');
+            }
+        }, 3000);
+    };
+
+    function startApp() {
+        const number = document.getElementById('my-number').value;
+        if (!number) return alert("Numara yazmalısın!");
+        
+        // Numara ID olarak kullanılır (Ön ek ile karışıklık önlenir)
+        const id = "WOS-" + number; 
+        myData = { nick: number, id: id };
+        localStorage.setItem('wos_me', JSON.stringify(myData));
+        initPeer();
+        loadMain();
+    }
+
+    function initPeer() {
+        peer = new Peer(myData.id);
+        
+        peer.on('connection', (conn) => {
+            activeConn = conn;
+            let friend = myFriends.find(f => f.id === conn.peer);
+            if(!friend) {
+                friend = { id: conn.peer, nick: conn.peer.replace("WOS-", ""), messages: [] };
+                myFriends.push(friend);
+                save();
+                renderContacts();
+            }
+            setupConnEvents();
+        });
+    }
+
+    function loadMain() {
+        showScreen('main-screen');
+        document.getElementById('user-info').innerHTML = `<b>${myData.nick}</b><br><span class="id-text">No: ${myData.nick}</span>`;
+        renderContacts();
+    }
+
+    function handleSearch(event) {
+        if (event.key === 'Enter') {
+            const searchNum = document.getElementById('search-id').value.trim();
+            const searchId = "WOS-" + searchNum;
+            if (!searchNum) return;
+            if (searchId === myData.id) return alert("Kendini ekleyemezsin!");
+            
+            // Eğer listede yoksa ekle
+            const exist = myFriends.find(f => f.id === searchId);
+            if (!exist) {
+                myFriends.push({ id: searchId, nick: searchNum, messages: [] });
+                save();
+            }
+            renderContacts();
+            document.getElementById('search-id').value = '';
+            
+            // Otomatik olarak sohbeti açmayı deneyebiliriz
+            const index = myFriends.findIndex(f => f.id === searchId);
+            openChat(index);
+        }
+    }
+
+    function renderContacts() {
+        const list = document.getElementById('contact-list');
+        list.innerHTML = myFriends.length === 0 ? '<p style="text-align:center; padding:20px; color:#8696a0;">Henüz kimse yok.</p>' : '';
+        myFriends.forEach((f, index) => {
+            list.innerHTML += `<div class="item" onclick="openChat(${index})">
+                <div><strong>${f.nick}</strong><br><span class="id-text">ID: ${f.id}</span></div>
+                <span style="color:#00a884">›</span>
+            </div>`;
+        });
+    }
+
+    function openChat(index) {
+        currentChatIndex = index;
+        const targetId = myFriends[index].id;
+        showScreen('chat-screen');
+        document.getElementById('chat-title').innerText = myFriends[index].nick;
+        renderMessages();
+
+        activeConn = peer.connect(targetId);
+        setupConnEvents();
+    }
+
+    function setupConnEvents() {
+        activeConn.on('open', () => {
+            document.getElementById('conn-status').innerText = "Çevrimiçi";
+        });
+
+        activeConn.on('data', (data) => {
+            const friend = myFriends.find(f => f.id === activeConn.peer);
+            if(friend) {
+                friend.messages.push({ text: data, type: 'received' });
+                save();
+                if(currentChatIndex !== null && myFriends[currentChatIndex].id === activeConn.peer) {
+                    renderMessages();
+                }
+            }
+        });
+
+        activeConn.on('close', () => {
+            document.getElementById('conn-status').innerText = "Çevrimdışı";
+        });
+    }
+
+    function sendMsg() {
+        const input = document.getElementById('msg-input');
+        const text = input.value.trim();
+        if (!text || !activeConn) return;
+
+        activeConn.send(text);
+        myFriends[currentChatIndex].messages.push({ text: text, type: 'sent' });
+        save();
+        renderMessages();
+        input.value = '';
+    }
+
+    function renderMessages() {
+        const container = document.getElementById('chat-messages');
+        container.innerHTML = '';
+        if(currentChatIndex !== null) {
+            myFriends[currentChatIndex].messages.forEach(m => {
+                container.innerHTML += `<div class="bubble ${m.type}">${m.text}</div>`;
+            });
+        }
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function addStory() {
+        const text = prompt("Durumunuz:");
+        if (text) {
+            const div = document.createElement('div');
+            div.className = 'story-circle';
+            div.innerText = text;
+            document.getElementById('story-list').appendChild(div);
+        }
+    }
+
+    function save() { 
+        localStorage.setItem('wos_friends', JSON.stringify(myFriends)); 
+    }
+
+    function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+
+    function goBack() { 
+        currentChatIndex = null;
+        showScreen('main-screen'); 
+    }
+
+    function logout() { 
+        if(confirm("Tüm verileriniz ve mesaj geçmişiniz silinecek. Emin misiniz?")) {
+            localStorage.clear(); 
+            location.reload(); 
+        }
+    }
+</script>
+</body>
+</html>
