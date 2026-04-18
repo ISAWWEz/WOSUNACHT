@@ -12,13 +12,7 @@
         .screen { display: none; flex-direction: column; height: 100%; }
         .active { display: flex; }
 
-        /* Açılış Ekranı Stili */
-        #splash-screen { 
-            background: #111b21; 
-            align-items: center; 
-            justify-content: center; 
-            text-align: center;
-        }
+        #splash-screen { background: #111b21; align-items: center; justify-content: center; text-align: center; }
         #splash-screen img { width: 150px; height: 150px; border-radius: 20px; margin-bottom: 20px; }
 
         header { background: #202c33; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #313d45; }
@@ -36,9 +30,6 @@
         .bubble { padding: 8px 12px; border-radius: 8px; margin: 5px 0; max-width: 70%; word-wrap: break-word; font-size: 14px; }
         .sent { background: #005c4b; align-self: flex-end; }
         .received { background: #202c33; align-self: flex-start; }
-
-        .stories { display: flex; padding: 10px; gap: 10px; overflow-x: auto; background: #111b21; border-bottom: 1px solid #313d45; }
-        .story-circle { min-width: 55px; height: 55px; border-radius: 50%; border: 2px solid #00a884; display: flex; align-items: center; justify-content: center; font-size: 10px; text-align: center; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -52,10 +43,10 @@
 
     <div id="login-screen" class="screen">
         <div style="padding: 40px; text-align: center; margin-top: auto; margin-bottom: auto;">
-            <h1 style="color:#00a884; font-size: 40px;">Hoş Geldin</h1>
-            <p>Numaranızı belirleyerek başlayın</p>
-            <input type="number" id="my-number" placeholder="Örn: 5051234567">
-            <button class="btn" style="margin-top: 20px; width: 100%; height: 45px;" onclick="startApp()">Numarayı Kaydet</button>
+            <h1 style="color:#00a884; font-size: 40px;">Wosunacth</h1>
+            <p>10 haneli numaranızı belirleyin</p>
+            <input type="number" id="my-number" placeholder="Örn: 5051234567" maxlength="10">
+            <button class="btn" style="margin-top: 20px; width: 100%; height: 45px;" onclick="startApp()">Kaydet ve Giriş Yap</button>
         </div>
     </div>
 
@@ -64,15 +55,9 @@
             <div id="user-info"></div>
             <button class="btn" onclick="logout()">Çıkış</button>
         </header>
-
-        <div class="stories" id="story-list">
-            <div class="story-circle" onclick="addStory()">+ Durum</div>
-        </div>
-
         <div class="search-box">
-            <input type="number" id="search-id" placeholder="Arkadaşının numarasını yaz ve Enter'a bas..." onkeypress="handleSearch(event)">
+            <input type="number" id="search-id" placeholder="Arkadaşının 10 haneli nosunu yaz ve Enter'a bas..." onkeypress="handleSearch(event)">
         </div>
-
         <div class="list-container" id="contact-list"></div>
     </div>
 
@@ -97,7 +82,6 @@
     let peer;
     let activeConn;
 
-    // Açılış Ekranı Zamanlayıcısı (3 saniye sonra yönlendirir)
     window.onload = () => {
         setTimeout(() => {
             if (myData) {
@@ -111,9 +95,11 @@
 
     function startApp() {
         const number = document.getElementById('my-number').value;
-        if (!number) return alert("Numara yazmalısın!");
+        // 10 Karakter Kontrolü
+        if (number.length !== 10) {
+            return alert("Numara tam olarak 10 haneli olmalıdır!");
+        }
         
-        // Numara ID olarak kullanılır (Ön ek ile karışıklık önlenir)
         const id = "WOS-" + number; 
         myData = { nick: number, id: id };
         localStorage.setItem('wos_me', JSON.stringify(myData));
@@ -123,7 +109,6 @@
 
     function initPeer() {
         peer = new Peer(myData.id);
-        
         peer.on('connection', (conn) => {
             activeConn = conn;
             let friend = myFriends.find(f => f.id === conn.peer);
@@ -146,11 +131,14 @@
     function handleSearch(event) {
         if (event.key === 'Enter') {
             const searchNum = document.getElementById('search-id').value.trim();
+            // Arama için 10 karakter kontrolü
+            if (searchNum.length !== 10) {
+                return alert("Lütfen 10 haneli bir numara girin.");
+            }
+
             const searchId = "WOS-" + searchNum;
-            if (!searchNum) return;
             if (searchId === myData.id) return alert("Kendini ekleyemezsin!");
             
-            // Eğer listede yoksa ekle
             const exist = myFriends.find(f => f.id === searchId);
             if (!exist) {
                 myFriends.push({ id: searchId, nick: searchNum, messages: [] });
@@ -159,7 +147,6 @@
             renderContacts();
             document.getElementById('search-id').value = '';
             
-            // Otomatik olarak sohbeti açmayı deneyebiliriz
             const index = myFriends.findIndex(f => f.id === searchId);
             openChat(index);
         }
@@ -170,7 +157,7 @@
         list.innerHTML = myFriends.length === 0 ? '<p style="text-align:center; padding:20px; color:#8696a0;">Henüz kimse yok.</p>' : '';
         myFriends.forEach((f, index) => {
             list.innerHTML += `<div class="item" onclick="openChat(${index})">
-                <div><strong>${f.nick}</strong><br><span class="id-text">ID: ${f.id}</span></div>
+                <div><strong>${f.nick}</strong><br><span class="id-text">Numara: ${f.nick}</span></div>
                 <span style="color:#00a884">›</span>
             </div>`;
         });
@@ -231,16 +218,6 @@
         container.scrollTop = container.scrollHeight;
     }
 
-    function addStory() {
-        const text = prompt("Durumunuz:");
-        if (text) {
-            const div = document.createElement('div');
-            div.className = 'story-circle';
-            div.innerText = text;
-            document.getElementById('story-list').appendChild(div);
-        }
-    }
-
     function save() { 
         localStorage.setItem('wos_friends', JSON.stringify(myFriends)); 
     }
@@ -256,7 +233,7 @@
     }
 
     function logout() { 
-        if(confirm("Tüm verileriniz ve mesaj geçmişiniz silinecek. Emin misiniz?")) {
+        if(confirm("Tüm verileriniz silinecek. Emin misiniz?")) {
             localStorage.clear(); 
             location.reload(); 
         }
