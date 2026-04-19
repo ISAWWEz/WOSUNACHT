@@ -1,115 +1,76 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WOSUNACHT - Bakım Modu</title>
-    <style>
-        body {
-            background-color: #082d84;
-            color: white;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            min-height: 100vh;
-            margin: 0;
-            padding-top: 50px;
-            text-align: center;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WOSUNACHT</title>
 
-        .container {
-            width: 90%;
-            max-width: 600px;
-        }
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;600&display=swap" rel="stylesheet">
 
-        .header {
-            color: #0f0f; /* Mavi Renk */
-            font-size: 2.5rem;
-            font-weight: bold;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
+<style>
+body {
+    margin: 0;
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+    color: white;
+    text-align: center;
+}
 
-        .status {
-            font-size: 1.2rem;
-            margin-bottom: 30px;
-        }
+.container {
+    margin-top: 100px;
+}
 
-        .question {
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin-top: 20px;
-        }
+h1 {
+    font-size: 50px;
+    color: #00ff88;
+}
 
-        .arrow {
-            font-size: 2rem;
-            margin: 10px 0;
-            color: #1e90ff;
-        }
+p {
+    font-size: 18px;
+    opacity: 0.8;
+}
 
-        .info-box {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 20px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-        }
+.button {
+    margin-top: 30px;
+    padding: 15px 30px;
+    font-size: 18px;
+    border: none;
+    border-radius: 30px;
+    background: #00ff88;
+    color: black;
+    cursor: pointer;
+    transition: 0.3s;
+}
 
-        .warning {
-            color: #ff4d4d; /* Kırmızı Renk */
-            font-weight: bold;
-            font-size: 0.9rem;
-            margin-bottom: 20px;
-            padding: 10px;
-            border: 1px solid #ff4d4d;
-        }
+.button:hover {
+    background: #00cc6a;
+    transform: scale(1.05);
+}
 
-        .footer-text {
-            color: #2ecc71; /* Yeşil Renk */
-            font-size: 1.1rem;
-            line-height: 1.6;
-            margin-top: 20px;
-        }
-
-        .copyright {
-            font-size: 0.8rem;
-            opacity: 0.7;
-            display: block;
-            margin-top: 10px;
-        }
-    </style>
+.footer {
+    position: fixed;
+    bottom: 10px;
+    width: 100%;
+    font-size: 12px;
+    opacity: 0.5;
+}
+</style>
 </head>
+
 <body>
 
-    <div class="container">
-        <div class="header">WOSUNACHT</div>
-        
-        <div class="status">
-            SİTE İS CLOSED 🔒<br>
-            SİTE KAPALI
-        </div>
+<div class="container">
+    <h1>WOSUNACHT</h1>
+    <p>Numarasız ve e-mailsiz güvenli sohbet deneyimi</p>
 
-        <div class="question">SİTE NEDEN KAPALI?</div>
-        <div class="arrow">↓</div>
+    <button class="button" onclick="alert('Yakında aktif olacak!')">
+        Sohbete Başla
+    </button>
+</div>
 
-        <div class="info-box">
-            SİTE HERGÜN BAKIMA GİRİYOR<br>
-            SİTE KISA SÜRELİ BAKIMDA
-        </div>
-
-        <div class="warning">
-            WOSUNACH DÜNYACA ÜNLÜ "SOHBET" UYGULAMASININ ALTERNATİFİ DEĞİLDİR!
-        </div>
-
-        <div class="footer-text">
-            WOSUNACHT ARKADAŞLARINIZ İLE <br>
-            TELEFON NUMARASIZ VE E-MAİL İLE GİRİŞ YAPMADAN <br>
-            SOHBET ETMENİZİ SAĞLAR VE BUNU GÜVENLİ ŞEKİLDE YAPAR
-            <span class="copyright">©</span>
-        </div>
-    </div>
+<div class="footer">
+    © 2026 WOSUNACHT
+</div>
 
 </body>
 </html>
