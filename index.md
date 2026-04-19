@@ -1,0 +1,2 @@
+#SİTE KAPALI🚨⚠️
+#SITE IS CLOSED
