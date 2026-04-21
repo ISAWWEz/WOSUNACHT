@@ -5,6 +5,12 @@ let myStories = JSON.parse(localStorage.getItem('wos_stories')) || [];
 let currentChatIndex = null;
 let peer, activeConn, mediaRecorder, audioChunks = [];
 
+// Arama Değişkenleri
+let currentCall = null;
+let localStream = null;
+let isMuted = false;
+let remoteAudio = new Audio(); // Sesi çalmak için global obje
+
 // --- DİNAMİK CSS ---
 const style = document.createElement('style');
 style.textContent = `
@@ -13,7 +19,7 @@ style.textContent = `
     .screen { display: none; flex-direction: column; height: 100%; width: 100%; }
     .active { display: flex; }
     header { background: #202c33; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #313d45; }
-    .btn { background: #00a884; color: #111b21; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    .btn { background: #00a884; color: #111b21; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; }
     #chat-messages { flex: 1; padding: 15px; overflow-y: auto; background: #0b141a; display: flex; flex-direction: column; }
     .bubble { padding: 10px; border-radius: 8px; margin: 5px 0; max-width: 75%; }
     .sent { background: #005c4b; align-self: flex-end; }
@@ -31,23 +37,26 @@ document.getElementById('app').innerHTML = `
         <img src="acilis.webp" style="width:120px; border-radius:20px; margin-bottom:20px;">
         <h1 style="color:#00a884">Wosunacth</h1>
     </div>
+    
     <div id="login-screen" class="screen" style="padding:40px; justify-content:center;">
         <h1 style="text-align:center; color:#00a884">Wosunacth</h1>
         <p style="text-align:center">10 haneli numaranızı girin</p>
         <input type="number" id="login-num" style="width:100%; padding:12px; border-radius:8px; border:none; background:#2a3942; color:white;">
         <button class="btn" onclick="startApp()" style="width:100%; margin-top:20px; height:45px;">Giriş Yap</button>
     </div>
+    
     <div id="main-screen" class="screen">
         <header><div id="user-info"></div><button class="btn" onclick="logout()">Çıkış</button></header>
         <div class="stories" id="story-list"></div>
         <div style="padding:10px;"><input type="number" id="search-id" placeholder="ID ile kişi ekle..." onkeypress="handleSearch(event)" style="width:100%; padding:10px; border-radius:8px; border:none; background:#111b21; color:white;"></div>
         <div id="contact-list" style="flex:1; overflow-y:auto;"></div>
     </div>
+    
     <div id="chat-screen" class="screen">
         <header>
-            <button class="btn" onclick="goBack()">←</button>
+            <button class="btn" onclick="goBack()" style="font-size:20px;">←</button>
             <div id="chat-title" style="flex:1; margin-left:10px; font-weight:bold;"></div>
-            <button class="btn" onclick="makeCall()" style="background:#25d366">📞</button>
+            <button class="btn" onclick="makeCall()" style="background:#25d366; font-size:18px;">📞</button>
         </header>
         <div id="chat-messages"></div>
         <div id="chat-footer" style="padding:10px; background:#202c33; display:flex; gap:8px;">
@@ -56,6 +65,26 @@ document.getElementById('app').innerHTML = `
             <button class="btn" onclick="sendText()">➤</button>
         </div>
     </div>
+
+    <div id="call-screen" class="screen" style="background:#111b21; justify-content:center; align-items:center; text-align:center;">
+        <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+            <h2 id="call-number" style="color:#00a884; font-size:35px; margin-bottom:10px;">Numara</h2>
+            <p id="call-status" style="color:#8696a0; font-size:18px; margin-bottom:40px;">Aranıyor...</p>
+        </div>
+        
+        <div style="padding-bottom:50px;">
+            <div id="call-incoming-btns" style="display:none; gap:40px; justify-content:center;">
+                <button class="btn" style="background:#ea0038; width:70px; height:70px; border-radius:50%; font-size:28px;" onclick="rejectCall()">✖</button>
+                <button class="btn" style="background:#25d366; width:70px; height:70px; border-radius:50%; font-size:28px;" onclick="acceptCall()">📞</button>
+            </div>
+            
+            <div id="call-active-btns" style="display:none; gap:40px; justify-content:center;">
+                <button class="btn" id="mute-btn" style="background:#313d45; color:white; width:70px; height:70px; border-radius:50%; font-size:24px;" onclick="toggleMute()">🎤</button>
+                <button class="btn" style="background:#ea0038; width:70px; height:70px; border-radius:50%; font-size:28px;" onclick="endCall()">✖</button>
+            </div>
+        </div>
+    </div>
+
     <input type="file" id="file-up" style="display:none" onchange="processFile(this)">
 `;
 
@@ -82,18 +111,121 @@ function initPeer() {
         activeConn = conn;
         conn.on('data', data => handleIncomingData(conn.peer, data));
     });
+
+    // BİRİSİ ARAYINCA
     peer.on('call', call => {
-        if(confirm("Gelen Arama...")) {
-            navigator.mediaDevices.getUserMedia({audio:true}).then(s => {
-                call.answer(s);
-                call.on('stream', rs => { const a = new Audio(); a.srcObject = rs; a.play(); });
-                logCall(call.peer, "Gelen Arama Kabul Edildi");
-            });
-        }
+        currentCall = call;
+        let f = myFriends.find(x => x.id === call.peer);
+        let callerName = f ? f.nick : call.peer.replace("WOS-", "");
+        
+        showCallUI(callerName, "Gelen Arama...", 'incoming');
     });
 }
 
-// --- SESLİ MESAJ VE ARAMA ---
+// --- YENİ EKLENEN ARAMA SİSTEMİ FONKSİYONLARI ---
+async function makeCall() {
+    try {
+        const s = await navigator.mediaDevices.getUserMedia({audio:true});
+        localStream = s;
+        const targetFriend = myFriends[currentChatIndex];
+        
+        showCallUI(targetFriend.nick, "Aranıyor...", 'active');
+        currentCall = peer.call(targetFriend.id, s);
+        logCall(targetFriend.id, "Giden Arama");
+        
+        setupCallEvents(currentCall);
+    } catch (e) {
+        alert("Mikrofona erişilemedi!");
+    }
+}
+
+function acceptCall() {
+    navigator.mediaDevices.getUserMedia({audio:true}).then(s => {
+        localStream = s;
+        currentCall.answer(s);
+        showCallUI(document.getElementById('call-number').innerText, "Görüşülüyor...", 'active');
+        logCall(currentCall.peer, "Gelen Arama (Kabul Edildi)");
+        setupCallEvents(currentCall);
+    }).catch(() => alert("Mikrofon hatası!"));
+}
+
+function rejectCall() {
+    if(currentCall) { currentCall.close(); }
+    logCall(currentCall.peer, "Cevapsız Arama");
+    closeCallUI();
+}
+
+function endCall() {
+    if(currentCall) { currentCall.close(); }
+    closeCallUI();
+}
+
+function toggleMute() {
+    if(localStream) {
+        isMuted = !isMuted;
+        localStream.getAudioTracks()[0].enabled = !isMuted;
+        
+        const muteBtn = document.getElementById('mute-btn');
+        muteBtn.style.background = isMuted ? "white" : "#313d45";
+        muteBtn.innerText = isMuted ? "🔇" : "🎤";
+    }
+}
+
+function setupCallEvents(call) {
+    call.on('stream', rs => {
+        remoteAudio.srcObject = rs;
+        remoteAudio.play();
+        document.getElementById('call-status').innerText = "Görüşülüyor...";
+    });
+    call.on('close', closeCallUI);
+    call.on('error', closeCallUI);
+}
+
+function showCallUI(name, status, mode) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('call-screen').classList.add('active');
+    
+    document.getElementById('call-number').innerText = name;
+    document.getElementById('call-status').innerText = status;
+    
+    if(mode === 'incoming') {
+        document.getElementById('call-incoming-btns').style.display = 'flex';
+        document.getElementById('call-active-btns').style.display = 'none';
+    } else {
+        document.getElementById('call-incoming-btns').style.display = 'none';
+        document.getElementById('call-active-btns').style.display = 'flex';
+        isMuted = false;
+        document.getElementById('mute-btn').style.background = "#313d45";
+        document.getElementById('mute-btn').innerText = "🎤";
+    }
+}
+
+function closeCallUI() {
+    if(localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        localStream = null;
+    }
+    currentCall = null;
+    remoteAudio.srcObject = null;
+    
+    // Arama bittiğinde sohbet açıksa sohbete dön, yoksa ana ekrana dön
+    if (currentChatIndex !== null) {
+        showScreen('chat-screen');
+    } else {
+        showScreen('main-screen');
+    }
+}
+
+function logCall(pId, txt) {
+    let f = myFriends.find(x => x.id === pId);
+    if(f) { 
+        f.messages.push({type:'call', text: txt + " (" + new Date().toLocaleTimeString().slice(0,5) + ")"}); 
+        save(); 
+        if(currentChatIndex !== null) renderMessages(); 
+    }
+}
+
+// --- SESLİ MESAJ VE NORMAL MESAJLAŞMA ---
 async function startVoice() {
     const s = await navigator.mediaDevices.getUserMedia({audio:true});
     mediaRecorder = new MediaRecorder(s);
@@ -113,19 +245,6 @@ async function startVoice() {
 }
 function stopVoice() { if(mediaRecorder) mediaRecorder.stop(); }
 
-async function makeCall() {
-    const s = await navigator.mediaDevices.getUserMedia({audio:true});
-    const call = peer.call(myFriends[currentChatIndex].id, s);
-    logCall(myFriends[currentChatIndex].id, "Giden Arama");
-    call.on('stream', rs => { const a = new Audio(); a.srcObject = rs; a.play(); });
-}
-
-function logCall(pId, txt) {
-    const f = myFriends.find(x => x.id === pId);
-    if(f) { f.messages.push({type:'call', text: txt + " - " + new Date().toLocaleTimeString()}); save(); if(currentChatIndex !== null) renderMessages(); }
-}
-
-// --- MESAJLAŞMA ---
 function sendText() {
     const val = document.getElementById('msg-input').value;
     if(!val || !activeConn) return;
@@ -147,9 +266,10 @@ function saveMsg(idx, content, side) {
     save(); renderMessages();
 }
 
-// --- DURUM / STORY ---
+// --- DURUM / STORY SİSTEMİ ---
 function processFile(input) {
     const file = input.files[0];
+    if(!file) return;
     const desc = prompt("Açıklama yazın:");
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -161,13 +281,13 @@ function processFile(input) {
 
 function renderStories() {
     const list = document.getElementById('story-list');
-    list.innerHTML = `<div class="story-circle" onclick="document.getElementById('file-up').click()" style="display:flex; align-items:center; justify-content:center; border:2px dashed #8696a0;">+</div>`;
+    list.innerHTML = `<div class="story-circle" onclick="document.getElementById('file-up').click()" style="display:flex; align-items:center; justify-content:center; border:2px dashed #8696a0; font-size:24px;">+</div>`;
     myStories.forEach(s => {
         const div = document.createElement('div');
         div.className = 'story-circle';
         div.style.backgroundImage = s.type === 'image' ? `url(${s.media})` : 'none';
         div.style.backgroundColor = s.type === 'video' ? '#00a884' : '';
-        div.onclick = () => alert(`${s.nick}: ${s.text}`);
+        div.onclick = () => alert(`${s.nick}:\n${s.text}`);
         
         const del = document.createElement('div');
         del.innerHTML = "°°°";
@@ -179,7 +299,7 @@ function renderStories() {
     });
 }
 
-// --- YARDIMCI ---
+// --- YARDIMCI VE YÖNLENDİRME FONKSİYONLARI ---
 function renderContacts() {
     const list = document.getElementById('contact-list');
     list.innerHTML = "";
@@ -193,7 +313,7 @@ function renderMessages() {
     box.innerHTML = "";
     myFriends[currentChatIndex].messages.forEach(m => {
         if(m.type === 'call') box.innerHTML += `<div class="call-info">${m.text}</div>`;
-        else if(m.audio) box.innerHTML += `<div class="bubble ${m.type}"><audio controls src="${m.audio}" style="width:100%"></audio></div>`;
+        else if(m.audio) box.innerHTML += `<div class="bubble ${m.type}"><audio controls src="${m.audio}" style="width:100%; height:40px;"></audio></div>`;
         else box.innerHTML += `<div class="bubble ${m.type}">${m.text}</div>`;
     });
     box.scrollTop = box.scrollHeight;
@@ -204,5 +324,11 @@ function handleSearch(e) { if(e.key === 'Enter') { const id = "WOS-"+e.target.va
 function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 function loadMain() { showScreen('main-screen'); document.getElementById('user-info').innerText = myData.nick; renderContacts(); renderStories(); }
 function save() { localStorage.setItem('wos_friends', JSON.stringify(myFriends)); }
-function goBack() { currentChatIndex = null; showScreen('main-screen'); }
+
+// DÜZELTİLDİ: Geri Çıkma Butonu
+function goBack() { 
+    currentChatIndex = null; 
+    showScreen('main-screen'); 
+}
+
 function logout() { if(confirm("Her şey silinecek!")) { localStorage.clear(); location.reload(); } }
