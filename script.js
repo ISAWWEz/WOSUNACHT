@@ -1,545 +1,215 @@
+// --- DEĞİŞKENLER VE STORAGE ---
 let myData = JSON.parse(localStorage.getItem('wos_me')) || null;
 let myFriends = JSON.parse(localStorage.getItem('wos_friends')) || [];
 let myStories = JSON.parse(localStorage.getItem('wos_stories')) || [];
-
 let currentChatIndex = null;
 let modalTargetIndex = null;
-let peer = null;
-let activeConn = null;
-let tempProfilePic = "";
+let peer, activeConn, mediaRecorder, audioChunks = [];
 
+// --- CSS ENJEKSİYONU ---
+const style = document.createElement('style');
+style.textContent = `
+    body { font-family: 'Segoe UI', sans-serif; background: #111b21; color: #e9edef; margin: 0; display: flex; justify-content: center; height: 100vh; }
+    #app { width: 100%; max-width: 450px; background: #222e35; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+    .screen { display: none; flex-direction: column; height: 100%; }
+    .active { display: flex; }
+    header { background: #202c33; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #313d45; }
+    .btn { background: #00a884; color: #111b21; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    .btn-danger { background: #ea0038; color: white; }
+    .search-box { padding: 10px; background: #111b21; }
+    input { width: 100%; padding: 10px; background: #2a3942; border: none; color: white; border-radius: 8px; box-sizing: border-box; outline: none; }
+    .list-container { flex: 1; overflow-y: auto; }
+    .item { padding: 15px; border-bottom: 1px solid #313d45; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    #chat-messages { flex: 1; padding: 15px; overflow-y: auto; background-color: #0b141a; display: flex; flex-direction: column; }
+    .bubble { padding: 8px 12px; border-radius: 8px; margin: 5px 0; max-width: 70%; word-wrap: break-word; }
+    .sent { background: #005c4b; align-self: flex-end; }
+    .received { background: #202c33; align-self: flex-start; }
+    .call-record { align-self: center; background: rgba(255,255,255,0.1); font-size: 11px; padding: 4px 10px; border-radius: 10px; color: #8696a0; }
+    .stories { display: flex; padding: 10px; gap: 10px; overflow-x: auto; background: #111b21; border-bottom: 1px solid #313d45; }
+    .story-circle { min-width: 55px; height: 55px; border-radius: 50%; border: 2px solid #00a884; position: relative; background-size: cover; cursor: pointer; }
+    .story-overlay { position: absolute; bottom: 0; background: rgba(0,0,0,0.5); width: 100%; font-size: 8px; text-align: center; }
+    #friend-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; }
+    .modal-content { background: #222e35; padding: 25px; border-radius: 15px; width: 80%; text-align: center; }
+    .profile-pic { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #313d45; }
+`;
+document.head.appendChild(style);
+
+// --- HTML YAPISI OLUŞTURMA ---
+const app = document.getElementById('app');
+app.innerHTML = `
+    <div id="friend-modal"><div class="modal-content"><h3 id="modal-title"></h3><button class="btn" onclick="modalRename()" style="width:100%; margin-bottom:10px;">Yeniden Adlandır</button><button id="block-btn" class="btn btn-danger" onclick="modalToggleBlock()" style="width:100%; margin-bottom:10px;">Engelle</button><button class="btn" onclick="closeModal()" style="width:100%; background:#313d45; color:white;">İptal</button></div></div>
+    <div id="splash-screen" class="screen active" style="align-items:center; justify-content:center;"><img src="acilis.webp" style="width:150px; border-radius:20px; margin-bottom:20px;"><h1 style="color:#00a884;">Wosunacth</h1></div>
+    <div id="login-screen" class="screen" style="padding:40px; justify-content:center; text-align:center;"><h1>Wosunacth</h1><p>10 haneli numaranız</p><input type="number" id="my-num-in" placeholder="5xxxxxxxxx"><button class="btn" onclick="startApp()" style="margin-top:20px; width:100%;">Giriş Yap</button></div>
+    <div id="main-screen" class="screen">
+        <header><div id="user-info" style="display:flex; align-items:center;"></div><div onclick="openSettings()" style="cursor:pointer;">⚙️</div></header>
+        <div class="stories" id="story-list"></div>
+        <div class="search-box"><input type="number" id="search-id" placeholder="Numara ile kişi ekle..." onkeypress="handleSearch(event)"></div>
+        <div class="list-container" id="contact-list"></div>
+    </div>
+    <div id="chat-screen" class="screen">
+        <header><button class="btn" onclick="goBack()">←</button><div id="chat-title" style="flex:1; margin-left:10px;"></div><button class="btn" onclick="startVoiceCall()" style="background:#25d366;">📞</button></header>
+        <div id="chat-messages"></div>
+        <div id="chat-footer" style="padding:10px; background:#202c33; display:flex; gap:5px;">
+            <input type="text" id="msg-input" placeholder="Mesaj..." style="flex:1;">
+            <button class="btn" onmousedown="startVoiceRec()" onmouseup="stopVoiceRec()">🎤</button>
+            <button class="btn" onclick="sendMsg()">➤</button>
+        </div>
+    </div>
+    <div id="settings-screen" class="screen" style="padding:20px; text-align:center;">
+        <header><button class="btn" onclick="showScreen('main-screen')">←</button><span>Ayarlar</span><span></span></header>
+        <img id="set-prev" class="profile-pic" style="width:100px; height:100px; margin-top:20px;">
+        <input type="file" id="p-up" style="display:none;" onchange="handlePUp(this)"><button class="btn" onclick="document.getElementById('p-up').click()" style="display:block; width:100%; margin-top:10px;">Resim Seç</button>
+        <input type="text" id="set-nick" style="margin-top:20px;" placeholder="İsim">
+        <button class="btn" onclick="saveSettings()" style="width:100%; margin-top:20px;">Kaydet</button>
+        <button class="btn btn-danger" onclick="logout()" style="width:100%; margin-top:10px;">Hesabı Sil</button>
+    </div>
+    <input type="file" id="s-up" style="display:none;" onchange="handleSUp(this)">
+`;
+
+// --- MANTIK VE FONKSİYONLAR ---
 window.onload = () => {
     setTimeout(() => {
-        if (myData) {
-            initPeer();
-            loadMain();
-        } else {
-            showScreen('login-screen');
-        }
-    }, 3000);
+        if (myData) { initPeer(); loadMain(); } 
+        else { showScreen('login-screen'); }
+    }, 2000);
 };
 
 function startApp() {
-    const numberInput = document.getElementById('my-number');
-    const number = numberInput.value.trim();
-
-    if (!/^\d{10}$/.test(number)) {
-        alert("Numaranız 10 haneli olmalıdır!");
-        return;
-    }
-
-    myData = {
-        nick: number,
-        id: "WOS-" + number,
-        pic: ""
-    };
-
+    const num = document.getElementById('my-num-in').value;
+    if (num.length !== 10) return alert("10 hane girin!");
+    myData = { nick: num, id: "WOS-" + num, pic: "" };
     localStorage.setItem('wos_me', JSON.stringify(myData));
-    initPeer();
-    loadMain();
+    location.reload();
 }
 
 function initPeer() {
-    try {
-        if (peer) {
-            peer.destroy();
-        }
-
-        peer = new Peer(myData.id);
-
-        peer.on('open', () => {
-            console.log("Peer hazır:", myData.id);
+    peer = new Peer(myData.id);
+    peer.on('connection', conn => {
+        activeConn = conn;
+        conn.on('data', data => {
+            const friend = myFriends.find(f => f.id === conn.peer);
+            if(friend && friend.isBlocked) return;
+            if(data.type === 'audio') { handleIncomingAudio(conn.peer, data.content); }
+            else { handleIncomingMsg(conn.peer, data); }
         });
-
-        peer.on('connection', (conn) => {
-            setupIncomingConnection(conn);
-        });
-
-        peer.on('error', (err) => {
-            console.error("Peer hatası:", err);
-            document.getElementById('conn-status').innerText = "Bağlantı hatası";
-        });
-    } catch (error) {
-        console.error("Peer başlatılamadı:", error);
-        alert("Bağlantı sistemi başlatılamadı.");
-    }
-}
-
-function setupIncomingConnection(conn) {
-    activeConn = conn;
-
-    conn.on('open', () => {
-        console.log("Gelen bağlantı açıldı:", conn.peer);
     });
-
-    conn.on('data', (data) => {
-        const friend = myFriends.find(f => f.id === conn.peer);
-        if (friend && friend.isBlocked) return;
-
-        if (typeof data === 'object' && data !== null && data.type === 'profile_sync') {
-            updateFriendProfile(conn.peer, data);
-        } else {
-            handleIncomingMsg(conn.peer, data);
-        }
-    });
-
-    conn.on('close', () => {
-        if (document.getElementById('conn-status')) {
-            document.getElementById('conn-status').innerText = "Çevrimdışı";
-        }
-    });
-
-    conn.on('error', (err) => {
-        console.error("Bağlantı hatası:", err);
-    });
-}
-
-function openFriendMenu(index) {
-    modalTargetIndex = index;
-    const friend = myFriends[index];
-    if (!friend) return;
-
-    document.getElementById('modal-title').innerText = friend.nick;
-    document.getElementById('block-btn').innerText = friend.isBlocked ? "Engeli Kaldır" : "Engelle";
-    document.getElementById('friend-modal').style.display = 'flex';
-}
-
-function closeModal() {
-    document.getElementById('friend-modal').style.display = 'none';
-    modalTargetIndex = null;
-}
-
-function modalRename() {
-    if (modalTargetIndex === null) return;
-
-    const friend = myFriends[modalTargetIndex];
-    if (!friend) return;
-
-    const newName = prompt("Yeni isim:", friend.nick);
-    if (newName && newName.trim()) {
-        friend.nick = newName.trim();
-        saveFriends();
-        renderContacts();
-
-        if (currentChatIndex === modalTargetIndex) {
-            document.getElementById('chat-title').innerText = friend.nick;
-        }
-    }
-
-    closeModal();
-}
-
-function modalToggleBlock() {
-    if (modalTargetIndex === null) return;
-
-    const friend = myFriends[modalTargetIndex];
-    if (!friend) return;
-
-    friend.isBlocked = !friend.isBlocked;
-    saveFriends();
-    renderContacts();
-
-    if (currentChatIndex === modalTargetIndex) {
-        openChat(modalTargetIndex);
-    }
-
-    closeModal();
-}
-
-function renderContacts() {
-    const list = document.getElementById('contact-list');
-    list.innerHTML = '';
-
-    if (myFriends.length === 0) {
-        list.innerHTML = '<p style="text-align:center; padding:20px; color:#8696a0;">Kişi yok.</p>';
-        return;
-    }
-
-    myFriends.forEach((f, index) => {
-        const imgHtml = f.pic
-            ? `<img src="${f.pic}" class="profile-pic" style="width:35px; height:35px;">`
-            : '<div class="profile-pic" style="width:35px; height:35px;"></div>';
-
-        const blockedHtml = f.isBlocked
-            ? '<span style="color:#ea0038; font-size:10px;"> (ENGELLİ)</span>'
-            : '';
-
-        list.innerHTML += `
-            <div class="item">
-                <div style="display:flex; align-items:center; flex:1;" onclick="openChat(${index})">
-                    ${imgHtml}
-                    <div>
-                        <strong>${escapeHtml(f.nick)}${blockedHtml}</strong><br>
-                        <span class="id-text">${escapeHtml(f.id.replace("WOS-", ""))}</span>
-                    </div>
-                </div>
-                <div class="more-icon" onclick="openFriendMenu(${index})">•••</div>
-            </div>
-        `;
-    });
-}
-
-function openChat(index) {
-    const f = myFriends[index];
-    if (!f) return;
-
-    currentChatIndex = index;
-    showScreen('chat-screen');
-
-    document.getElementById('chat-title').innerText = f.nick;
-    document.getElementById('conn-status').innerText = "Bağlanıyor...";
-
-    const avatar = document.getElementById('chat-avatar');
-    if (f.pic) {
-        avatar.src = f.pic;
-        avatar.style.display = "block";
-    } else {
-        avatar.style.display = "none";
-    }
-
-    if (f.isBlocked) {
-        document.getElementById('chat-footer').style.display = "none";
-        document.getElementById('blocked-notice').style.display = "block";
-    } else {
-        document.getElementById('chat-footer').style.display = "flex";
-        document.getElementById('blocked-notice').style.display = "none";
-    }
-
-    renderMessages();
-
-    try {
-        if (activeConn && activeConn.open) {
-            activeConn.close();
-        }
-
-        activeConn = peer.connect(f.id);
-        setupConnEvents(activeConn);
-
-        setTimeout(() => {
-            if (activeConn && activeConn.open) {
-                activeConn.send({
-                    type: 'profile_sync',
-                    nick: myData.nick,
-                    pic: myData.pic
-                });
-            }
-        }, 1000);
-    } catch (error) {
-        console.error("Sohbet bağlantısı kurulamadı:", error);
-        document.getElementById('conn-status').innerText = "Bağlantı kurulamadı";
-    }
-}
-
-function sendMsg() {
-    if (currentChatIndex === null) return;
-
-    const friend = myFriends[currentChatIndex];
-    if (!friend || friend.isBlocked) return;
-
-    const input = document.getElementById('msg-input');
-    const text = input.value.trim();
-
-    if (!text) return;
-
-    if (!activeConn || !activeConn.open) {
-        alert("Kişi çevrimdışı veya bağlantı kurulamadı.");
-        return;
-    }
-
-    try {
-        activeConn.send(text);
-
-        if (!Array.isArray(friend.messages)) {
-            friend.messages = [];
-        }
-
-        friend.messages.push({
-            text: text,
-            type: 'sent'
-        });
-
-        saveFriends();
-        renderMessages();
-        input.value = '';
-    } catch (error) {
-        console.error("Mesaj gönderilemedi:", error);
-        alert("Mesaj gönderilemedi.");
-    }
-}
-
-function handleProfileUpload(input) {
-    const file = input.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        tempProfilePic = e.target.result;
-        document.getElementById('settings-preview-pic').src = tempProfilePic;
-    };
-    reader.readAsDataURL(file);
-}
-
-function handleStoryUpload(input) {
-    const file = input.files[0];
-    if (!file) return;
-
-    const desc = prompt("Açıklama:");
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-        const story = {
-            owner: myData.nick,
-            text: desc || "",
-            media: e.target.result,
-            type: file.type.startsWith('video') ? 'video' : 'image',
-            time: Date.now()
-        };
-
-        myStories.unshift(story);
-        localStorage.setItem('wos_stories', JSON.stringify(myStories));
-        renderStories();
-    };
-
-    reader.readAsDataURL(file);
-}
-
-function openSettings() {
-    document.getElementById('edit-nick').value = myData.nick;
-    document.getElementById('settings-preview-pic').src = myData.pic || "";
-    tempProfilePic = myData.pic || "";
-    showScreen('settings-screen');
-}
-
-function saveSettings() {
-    const newNick = document.getElementById('edit-nick').value.trim();
-
-    myData.nick = newNick || myData.nick;
-    myData.pic = tempProfilePic || "";
-
-    localStorage.setItem('wos_me', JSON.stringify(myData));
-    loadMain();
-    showScreen('main-screen');
-}
-
-function loadMain() {
-    showScreen('main-screen');
-
-    const imgHtml = myData.pic
-        ? `<img src="${myData.pic}" class="profile-pic">`
-        : '<div class="profile-pic"></div>';
-
-    document.getElementById('user-info').innerHTML = `
-        ${imgHtml}
-        <div>
-            <b>${escapeHtml(myData.nick)}</b><br>
-            <span class="id-text">${escapeHtml(myData.id.replace("WOS-", ""))}</span>
-        </div>
-    `;
-
-    renderContacts();
-    renderStories();
-}
-
-function handleSearch(event) {
-    if (event.key !== 'Enter') return;
-
-    const input = document.getElementById('search-id');
-    const num = input.value.trim();
-
-    if (!/^\d{10}$/.test(num)) {
-        alert("10 haneli numara girin.");
-        return;
-    }
-
-    const sid = "WOS-" + num;
-
-    if (sid === myData.id) {
-        alert("Kendinizi ekleyemezsiniz.");
-        return;
-    }
-
-    const existing = myFriends.find(f => f.id === sid);
-    if (!existing) {
-        myFriends.push({
-            id: sid,
-            nick: num,
-            messages: [],
-            pic: "",
-            isBlocked: false
-        });
-        saveFriends();
-        renderContacts();
-    }
-
-    input.value = '';
-}
-
-function setupConnEvents(conn) {
-    conn.on('open', () => {
-        document.getElementById('conn-status').innerText = "Çevrimiçi";
-
-        try {
-            conn.send({
-                type: 'profile_sync',
-                nick: myData.nick,
-                pic: myData.pic
+    peer.on('call', call => {
+        if(confirm("Gelen Arama!")) {
+            navigator.mediaDevices.getUserMedia({audio:true}).then(s => {
+                call.answer(s);
+                handleCallStream(call);
+                addCallMsg(call.peer, "Gelen Arama (Kabul Edildi)");
             });
-        } catch (e) {
-            console.error("Profil senkronizasyonu gönderilemedi:", e);
         }
-    });
-
-    conn.on('data', (data) => {
-        if (typeof data === 'object' && data !== null && data.type === 'profile_sync') {
-            updateFriendProfile(conn.peer, data);
-        } else {
-            handleIncomingMsg(conn.peer, data);
-        }
-    });
-
-    conn.on('close', () => {
-        document.getElementById('conn-status').innerText = "Çevrimdışı";
-    });
-
-    conn.on('error', () => {
-        document.getElementById('conn-status').innerText = "Bağlantı hatası";
     });
 }
 
-function updateFriendProfile(peerId, data) {
-    const friend = myFriends.find(f => f.id === peerId);
-    if (!friend) return;
+// --- SESLİ MESAJ VE ARAMA ---
+async function startVoiceRec() {
+    const s = await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaRecorder = new MediaRecorder(s);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+        const b = new Blob(audioChunks, {type:'audio/ogg'});
+        const r = new FileReader();
+        r.onload = () => {
+            if(activeConn) activeConn.send({type:'audio', content: r.result});
+            myFriends[currentChatIndex].messages.push({audio: r.result, type:'sent'});
+            save(); renderMessages();
+        };
+        r.readAsDataURL(b);
+    };
+    mediaRecorder.start();
+}
+function stopVoiceRec() { if(mediaRecorder) mediaRecorder.stop(); }
 
-    if (data.nick && !friend.customName) {
-        friend.nick = data.nick;
-    }
-
-    if (typeof data.pic !== 'undefined') {
-        friend.pic = data.pic;
-    }
-
-    saveFriends();
-
-    if (currentChatIndex !== null && myFriends[currentChatIndex]?.id === peerId) {
-        const avatar = document.getElementById('chat-avatar');
-        if (data.pic) {
-            avatar.src = data.pic;
-            avatar.style.display = "block";
-        } else {
-            avatar.style.display = "none";
-        }
-
-        document.getElementById('chat-title').innerText = friend.nick;
-    }
-
-    renderContacts();
+async function startVoiceCall() {
+    const s = await navigator.mediaDevices.getUserMedia({audio:true});
+    const call = peer.call(myFriends[currentChatIndex].id, s);
+    addCallMsg(myFriends[currentChatIndex].id, "Giden Arama");
+    handleCallStream(call);
 }
 
-function handleIncomingMsg(peerId, text) {
-    const friend = myFriends.find(f => f.id === peerId);
-    if (!friend || friend.isBlocked) return;
-
-    if (!Array.isArray(friend.messages)) {
-        friend.messages = [];
-    }
-
-    friend.messages.push({
-        text: String(text),
-        type: 'received'
-    });
-
-    saveFriends();
-
-    if (currentChatIndex !== null && myFriends[currentChatIndex]?.id === peerId) {
-        renderMessages();
-    }
+function handleCallStream(call) {
+    call.on('stream', rs => { const a = new Audio(); a.srcObject = rs; a.play(); });
 }
 
-function renderMessages() {
-    const container = document.getElementById('chat-messages');
-    container.innerHTML = '';
+function addCallMsg(pId, txt) {
+    const f = myFriends.find(x => x.id === pId);
+    if(f) { f.messages.push({text: txt, type:'call-record'}); save(); if(currentChatIndex !== null) renderMessages(); }
+}
 
-    if (currentChatIndex === null || !myFriends[currentChatIndex]) return;
-
-    const messages = myFriends[currentChatIndex].messages || [];
-
-    messages.forEach(m => {
-        const bubble = document.createElement('div');
-        bubble.className = `bubble ${m.type}`;
-        bubble.textContent = m.text;
-        container.appendChild(bubble);
-    });
-
-    container.scrollTop = container.scrollHeight;
+// --- DURUM YÖNETİMİ ---
+function handleSUp(input) {
+    const f = input.files[0];
+    const desc = prompt("Açıklama:");
+    const r = new FileReader();
+    r.onload = (e) => {
+        myStories.unshift({id: Date.now(), owner: myData.nick, text: desc||"", media: e.target.result, type: f.type.startsWith('video')?'video':'image'});
+        localStorage.setItem('wos_stories', JSON.stringify(myStories)); renderStories();
+    };
+    r.readAsDataURL(f);
 }
 
 function renderStories() {
-    const list = document.getElementById('story-list');
-
-    list.innerHTML = `
-        <div class="story-circle" onclick="document.getElementById('story-upload').click()">+ Durum</div>
-        <input type="file" id="story-upload" class="file-input" accept="image/*,video/*" onchange="handleStoryUpload(this)">
-    `;
-
-    myStories.slice(0, 10).forEach(s => {
-        const storyDiv = document.createElement('div');
-        storyDiv.className = 'story-circle';
-
-        if (s.type === 'image') {
-            storyDiv.style.backgroundImage = `url('${s.media}')`;
-            storyDiv.style.backgroundSize = 'cover';
-            storyDiv.style.backgroundPosition = 'center';
-        } else {
-            storyDiv.style.background = '#00a884';
-        }
-
-        storyDiv.onclick = () => {
-            alert(`${s.owner}: ${s.text}`);
-        };
-
-        const overlay = document.createElement('div');
-        overlay.className = 'story-overlay';
-        overlay.textContent = s.owner;
-
-        storyDiv.appendChild(overlay);
-        list.appendChild(storyDiv);
+    const l = document.getElementById('story-list');
+    l.innerHTML = `<div class="story-circle" onclick="document.getElementById('s-up').click()" style="display:flex; align-items:center; justify-content:center; border:2px dashed #8696a0;">+</div>`;
+    myStories.forEach(s => {
+        const d = document.createElement('div');
+        d.className = 'story-circle';
+        d.style.backgroundImage = s.type==='image'?`url(${s.media})`:'none';
+        d.onclick = () => alert(s.text);
+        const del = document.createElement('div');
+        del.innerHTML = "°°°";
+        del.style = "position:absolute; top:-5px; right:-5px; color:white; font-weight:bold;";
+        del.onclick = (e) => { e.stopPropagation(); if(confirm("Sil?")) { myStories = myStories.filter(x => x.id !== s.id); localStorage.setItem('wos_stories', JSON.stringify(myStories)); renderStories(); }};
+        d.appendChild(del);
+        d.innerHTML += `<div class="story-overlay">${s.owner}</div>`;
+        l.appendChild(d);
     });
 }
 
-function saveFriends() {
-    localStorage.setItem('wos_friends', JSON.stringify(myFriends));
+// --- STANDART FONKSİYONLAR ---
+function sendMsg() {
+    const i = document.getElementById('msg-input');
+    if(!i.value || !activeConn) return;
+    activeConn.send(i.value);
+    myFriends[currentChatIndex].messages.push({text: i.value, type:'sent'});
+    save(); renderMessages(); i.value = '';
 }
 
-function showScreen(id) {
-    document.querySelectorAll('.screen').forEach(screen => {
-        screen.classList.remove('active');
+function handleIncomingMsg(pId, msg) {
+    const f = myFriends.find(x => x.id === pId);
+    if(f) { f.messages.push({text: msg, type:'received'}); save(); if(currentChatIndex !== null) renderMessages(); }
+}
+
+function handleIncomingAudio(pId, aud) {
+    const f = myFriends.find(x => x.id === pId);
+    if(f) { f.messages.push({audio: aud, type:'received'}); save(); if(currentChatIndex !== null) renderMessages(); }
+}
+
+function renderMessages() {
+    const c = document.getElementById('chat-messages');
+    c.innerHTML = '';
+    myFriends[currentChatIndex].messages.forEach(m => {
+        if(m.audio) { c.innerHTML += `<div class="bubble ${m.type}"><audio controls src="${m.audio}" style="width:100%;"></audio></div>`; }
+        else { c.innerHTML += `<div class="bubble ${m.type}">${m.text}</div>`; }
     });
-
-    const target = document.getElementById(id);
-    if (target) {
-        target.classList.add('active');
-    }
+    c.scrollTop = c.scrollHeight;
 }
 
-function goBack() {
-    currentChatIndex = null;
-    showScreen('main-screen');
-}
-
-function logout() {
-    if (confirm("Tüm veriler silinecek?")) {
-        localStorage.clear();
-        location.reload();
-    }
-}
-
-function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    return String(text)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-                }
-        
+function openChat(i) { currentChatIndex = i; showScreen('chat-screen'); document.getElementById('chat-title').innerText = myFriends[i].nick; activeConn = peer.connect(myFriends[i].id); renderMessages(); }
+function handleSearch(e) { if(e.key === 'Enter') { const n = e.target.value; const id = "WOS-"+n; if(!myFriends.find(x=>x.id===id)) { myFriends.push({id, nick:n, messages:[], isBlocked:false}); save(); renderContacts(); } e.target.value=''; }}
+function renderContacts() { const l = document.getElementById('contact-list'); l.innerHTML = ''; myFriends.forEach((f, i) => { l.innerHTML += `<div class="item"><div onclick="openChat(${i})" style="flex:1;"><b>${f.nick}</b><br><small>${f.id}</small></div><div onclick="openFriendMenu(${i})" style="color:#00a884; font-weight:bold; cursor:pointer;">•••</div></div>`; }); }
+function openFriendMenu(i) { modalTargetIndex = i; document.getElementById('modal-title').innerText = myFriends[i].nick; document.getElementById('block-btn').innerText = myFriends[i].isBlocked?"Engeli Kaldır":"Engelle"; document.getElementById('friend-modal').style.display = 'flex'; }
+function closeModal() { document.getElementById('friend-modal').style.display = 'none'; }
+function modalRename() { const n = prompt("Yeni isim:"); if(n) { myFriends[modalTargetIndex].nick = n; save(); renderContacts(); } closeModal(); }
+function modalToggleBlock() { myFriends[modalTargetIndex].isBlocked = !myFriends[modalTargetIndex].isBlocked; save(); renderContacts(); closeModal(); }
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+function loadMain() { showScreen('main-screen'); document.getElementById('user-info').innerText = myData.nick; renderContacts(); renderStories(); }
+function save() { localStorage.setItem('wos_friends', JSON.stringify(myFriends)); }
+function logout() { if(confirm("Silinsin mi?")) { localStorage.clear(); location.reload(); } }
+function openSettings() { showScreen('settings-screen'); }
+function saveSettings() { myData.nick = document.getElementById('set-nick').value || myData.nick; localStorage.setItem('wos_me', JSON.stringify(myData)); loadMain(); }
+                
