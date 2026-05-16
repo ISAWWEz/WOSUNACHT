@@ -209,4 +209,129 @@
         const friend = myFriends[index];
         document.getElementById('modal-title').innerText = friend.nick;
         document.getElementById('block-btn').innerText = friend.isBlocked ? "Engeli Kaldır" : "Engelle";
-        document.getElementB
+        document.getElementById('friend-modal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('friend-modal').style.display = 'none';
+        modalTargetIndex = null;
+    }
+
+    function modalRename() {
+        const friend = myFriends[modalTargetIndex];
+        const newName = prompt("Yeni isim:", friend.nick);
+        if (newName) {
+            friend.nick = newName;
+            save();
+            renderContacts();
+        }
+        closeModal();
+    }
+
+    function modalToggleBlock() {
+        const friend = myFriends[modalTargetIndex];
+        friend.isBlocked = !friend.isBlocked;
+        save();
+        renderContacts();
+        closeModal();
+    }
+
+    function renderContacts() {
+        const list = document.getElementById('contact-list');
+        list.innerHTML = myFriends.length === 0 ? '<p style="text-align:center; padding:20px; color:#8696a0;">Kişi yok.</p>' : '';
+        myFriends.forEach((f, index) => {
+            const imgHtml = f.pic ? `<img src="${f.pic}" class="profile-pic" style="width:35px; height:35px;">` : '<div class="profile-pic" style="width:35px; height:35px;"></div>';
+            const blockedHtml = f.isBlocked ? '<span style="color:#ea0038; font-size:10px;"> (ENGELLİ)</span>' : '';
+            list.innerHTML += `<div class="item">
+                <div style="display:flex; align-items:center; flex:1;" onclick="openChat(${index})">
+                    ${imgHtml}
+                    <div><strong>${f.nick}${blockedHtml}</strong><br><span class="id-text">${f.id.replace("WOS-","")}</span></div>
+                </div>
+                <div class="more-icon" onclick="openFriendMenu(${index})">•••</div>
+            </div>`;
+        });
+    }
+
+    function openChat(index) {
+        currentChatIndex = index;
+        const f = myFriends[index];
+        showScreen('chat-screen');
+        document.getElementById('chat-title').innerText = f.nick;
+        
+        if(f.isBlocked) {
+            document.getElementById('chat-footer').style.display = "none";
+            document.getElementById('blocked-notice').style.display = "block";
+        } else {
+            document.getElementById('chat-footer').style.display = "flex";
+            document.getElementById('blocked-notice').style.display = "none";
+        }
+
+        const avatar = document.getElementById('chat-avatar');
+        if(f.pic) { avatar.src = f.pic; avatar.style.display = "block"; } else { avatar.style.display = "none"; }
+        renderMessages();
+        activeConn = peer.connect(f.id);
+        setupConnEvents();
+        setTimeout(() => { if(activeConn.open) activeConn.send({type: 'profile_sync', nick: myData.nick, pic: myData.pic}); }, 1000);
+    }
+
+    function sendMsg() {
+        if(myFriends[currentChatIndex].isBlocked) return;
+        const input = document.getElementById('msg-input');
+        const text = input.value.trim();
+        if (!text || !activeConn) return;
+        activeConn.send({ type: 'text', text: text });
+        myFriends[currentChatIndex].messages.push({ text: text, type: 'sent' });
+        save();
+        renderMessages();
+        input.value = '';
+    }
+
+    function handleProfileUpload(input) {
+        const file = input.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => { tempProfilePic = e.target.result; document.getElementById('settings-preview-pic').src = tempProfilePic; };
+            reader.readAsDataURL(file);
+        }
+    }
+    
+    function handleStoryUpload(input) {
+        const file = input.files[0];
+        if (file) {
+            const desc = prompt("Açıklama:");
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const story = { owner: myData.nick, text: desc || "", media: e.target.result, type: file.type.startsWith('video') ? 'video' : 'image', time: Date.now() };
+                myStories.unshift(story); localStorage.setItem('wos_stories', JSON.stringify(myStories)); renderStories();
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+    
+    function openSettings() { document.getElementById('edit-nick').value = myData.nick; document.getElementById('settings-preview-pic').src = myData.pic || ""; tempProfilePic = myData.pic; showScreen('settings-screen'); }
+    function saveSettings() { myData.nick = document.getElementById('edit-nick').value || myData.nick; myData.pic = tempProfilePic; localStorage.setItem('wos_me', JSON.stringify(myData)); loadMain(); showScreen('main-screen'); }
+    function loadMain() { showScreen('main-screen'); const imgHtml = myData.pic ? `<img src="${myData.pic}" class="profile-pic">` : '<div class="profile-pic"></div>'; document.getElementById('user-info').innerHTML = `${imgHtml}<div><b>${myData.nick}</b><br><span class="id-text">${myData.id.replace("WOS-","")}</span></div>`; renderContacts(); renderStories(); }
+    function handleSearch(event) { if (event.key === 'Enter') { const num = document.getElementById('search-id').value.trim(); if (num.length !== 10) return; const sid = "WOS-" + num; if (sid === myData.id) return; if (!myFriends.find(f => f.id === sid)) { myFriends.push({ id: sid, nick: num, messages: [], pic: "", isBlocked: false }); save(); } renderContacts(); document.getElementById('search-id').value = ''; } }
+    function setupConnEvents() { activeConn.on('open', () => { document.getElementById('conn-status').innerText = "Çevrimiçi"; }); activeConn.on('data', (data) => { if(data.type === 'profile_sync') { updateFriendProfile(activeConn.peer, data); } else { handleIncomingMsg(activeConn.peer, data); } }); activeConn.on('close', () => { document.getElementById('conn-status').innerText = "Çevrimdışı"; }); }
+    function updateFriendProfile(peerId, data) { const friend = myFriends.find(f => f.id === peerId); if(friend) { friend.pic = data.pic; save(); if(currentChatIndex !== null && myFriends[currentChatIndex].id === peerId) { const avatar = document.getElementById('chat-avatar'); if(data.pic) { avatar.src = data.pic; avatar.style.display = "block"; } } renderContacts(); } }
+    
+    function renderMessages() { 
+        const container = document.getElementById('chat-messages'); 
+        container.innerHTML = ''; 
+        myFriends[currentChatIndex].messages.forEach(m => { 
+            if(m.type.startsWith('audio_')) { 
+                container.innerHTML += `<div class="bubble ${m.type.split('_')[1]}"><audio src="${m.text}" controls style="max-width:200px;"></audio></div>`; 
+            } else { 
+                container.innerHTML += `<div class="bubble ${m.type}">${m.text}</div>`; 
+            } 
+        }); 
+        container.scrollTop = container.scrollHeight; 
+    }
+    
+    function renderStories() { const list = document.getElementById('story-list'); list.innerHTML = `<div class="story-circle" onclick="document.getElementById('story-upload').click()">+ Durum</div>`; myStories.slice(0, 10).forEach(s => { const bg = s.type === 'image' ? `background-image: url('${s.media}')` : `background: #00a884`; list.innerHTML += `<div class="story-circle" style="${bg}" onclick="alert('${s.owner}: ${s.text}')"><div class="story-overlay">${s.owner}</div></div>`; }); }
+    function save() { localStorage.setItem('wos_friends', JSON.stringify(myFriends)); }
+    function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+    function goBack() { currentChatIndex = null; showScreen('main-screen'); }
+    function logout() { if(confirm("Tüm veriler silinecek?")) { localStorage.clear(); location.reload(); } }
+</script>
+<script src="script.js"></s
