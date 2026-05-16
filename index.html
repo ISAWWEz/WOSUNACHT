@@ -48,11 +48,51 @@
         }
         .modal-content { background: #222e35; padding: 25px; border-radius: 15px; width: 80%; max-width: 300px; text-align: center; }
         .modal-content button { width: 100%; margin: 8px 0; height: 40px; }
+
+        /* --- SİSTEMİK ÖZEL EKLENTİ STILLERİ --- */
+        .header-actions { display: flex; gap: 15px; align-items: center; }
+        .action-icon { font-size: 20px; cursor: pointer; user-select: none; }
+        #unknown-alert { display: none; background: #ea0038; color: white; padding: 10px 15px; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; }
+        #unknown-alert .alert-buttons { display: flex; gap: 8px; }
+        #unknown-alert button { border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .mic-btn { background: #2a3942; border: none; color: #00a884; border-radius: 5px; padding: 0 15px; cursor: pointer; font-size: 18px; display: flex; align-items: center; user-select: none; }
+        .mic-active { background: #ea0038 !important; color: white !important; }
+        
+        /* Çağrı Katman Yerleşimi */
+        #call-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #111b21; z-index: 50; flex-direction: column; align-items: center; justify-content: space-between; padding: 50px 20px; box-sizing: border-box; }
+        #remote-video { width: 100%; height: 70%; object-fit: cover; background: #222e35; border-radius: 12px; display: none; }
+        #local-video { width: 90px; height: 120px; object-fit: cover; position: absolute; top: 70px; right: 40px; border: 2px solid #00a884; border-radius: 8px; background: #111b21; display: none; }
+        .round-call-btn { width: 65px; height: 65px; border-radius: 50%; border: none; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: white; }
+        .call-accept { background: #00a884; }
+        .call-decline { background: #ea0038; }
     </style>
 </head>
 <body>
 
 <div id="app">
+    <!-- Bilinmeyen Numara Bildirim Sistemi -->
+    <div id="unknown-alert">
+        <span id="unknown-number-text">WOS-XXXXXXXXXX</span>
+        <div class="alert-buttons">
+            <button style="background: #00a884; color: #111b21;" onclick="handleUnknown('save')">Kaydet</button>
+            <button style="background: #222e35; color: white;" onclick="handleUnknown('block')">Engelle</button>
+        </div>
+    </div>
+
+    <!-- Sesli ve Görüntülü Çağrı Modülü -->
+    <div id="call-overlay">
+        <div id="call-user-name" style="font-size: 24px; font-weight: bold; color: #00a884; margin-top: 20px; text-align: center;">Kullanıcı</div>
+        <div id="call-status-text" style="font-size: 16px; color: #8696a0; margin-top: 10px;">Aranıyor...</div>
+        
+        <video id="remote-video" autoplay playsinline></video>
+        <video id="local-video" autoplay playsinline muted></video>
+
+        <div id="call-buttons-container" style="display: flex; gap: 40px; margin-bottom: 30px;">
+            <button id="accept-call-btn" class="round-call-btn call-accept" onclick="acceptIncomingCall()">📞</button>
+            <button id="decline-call-btn" class="round-call-btn call-decline" onclick="endCall()">🛑</button>
+        </div>
+    </div>
+
     <div id="friend-modal">
         <div class="modal-content">
             <h3 id="modal-title" style="margin-top:0; color:#00a884;">Kişi İşlemleri</h3>
@@ -122,10 +162,14 @@
                     <div id="conn-status" style="font-size: 10px; color: #8696a0;">Bekleniyor...</div>
                 </div>
             </div>
+            <div class="header-actions">
+                <div class="action-icon" onclick="openCallSelectionMenu()">📞</div>
+            </div>
         </header>
         <div id="chat-messages"></div>
         <div id="chat-footer" style="padding: 10px; background: #202c33; display: flex; gap: 10px;">
             <input type="text" id="msg-input" placeholder="Mesaj yazın...">
+            <button id="mic-btn" class="mic-btn">🎤</button>
             <button class="btn" onclick="sendMsg()">➤</button>
         </div>
         <div id="blocked-notice" style="display:none; padding: 15px; text-align: center; background: #ea003833; color: #ea0038; font-weight: bold;">
@@ -160,138 +204,9 @@
         loadMain();
     }
 
-    function initPeer() {
-        peer = new Peer(myData.id);
-        peer.on('connection', (conn) => {
-            activeConn = conn;
-            conn.on('data', (data) => {
-                const friend = myFriends.find(f => f.id === conn.peer);
-                if(friend && friend.isBlocked) return; 
-                if(data.type === 'profile_sync') { updateFriendProfile(conn.peer, data); } 
-                else { handleIncomingMsg(conn.peer, data); }
-            });
-        });
-    }
-
-    // Modal Fonksiyonları
     function openFriendMenu(index) {
         modalTargetIndex = index;
         const friend = myFriends[index];
         document.getElementById('modal-title').innerText = friend.nick;
         document.getElementById('block-btn').innerText = friend.isBlocked ? "Engeli Kaldır" : "Engelle";
-        document.getElementById('friend-modal').style.display = 'flex';
-    }
-
-    function closeModal() {
-        document.getElementById('friend-modal').style.display = 'none';
-        modalTargetIndex = null;
-    }
-
-    function modalRename() {
-        const friend = myFriends[modalTargetIndex];
-        const newName = prompt("Yeni isim:", friend.nick);
-        if (newName) {
-            friend.nick = newName;
-            save();
-            renderContacts();
-        }
-        closeModal();
-    }
-
-    function modalToggleBlock() {
-        const friend = myFriends[modalTargetIndex];
-        friend.isBlocked = !friend.isBlocked;
-        save();
-        renderContacts();
-        closeModal();
-    }
-
-    function renderContacts() {
-        const list = document.getElementById('contact-list');
-        list.innerHTML = myFriends.length === 0 ? '<p style="text-align:center; padding:20px; color:#8696a0;">Kişi yok.</p>' : '';
-        myFriends.forEach((f, index) => {
-            const imgHtml = f.pic ? `<img src="${f.pic}" class="profile-pic" style="width:35px; height:35px;">` : '<div class="profile-pic" style="width:35px; height:35px;"></div>';
-            const blockedHtml = f.isBlocked ? '<span style="color:#ea0038; font-size:10px;"> (ENGELLİ)</span>' : '';
-            list.innerHTML += `<div class="item">
-                <div style="display:flex; align-items:center; flex:1;" onclick="openChat(${index})">
-                    ${imgHtml}
-                    <div><strong>${f.nick}${blockedHtml}</strong><br><span class="id-text">${f.id.replace("WOS-","")}</span></div>
-                </div>
-                <div class="more-icon" onclick="openFriendMenu(${index})">•••</div>
-            </div>`;
-        });
-    }
-
-    function openChat(index) {
-        currentChatIndex = index;
-        const f = myFriends[index];
-        showScreen('chat-screen');
-        document.getElementById('chat-title').innerText = f.nick;
-        
-        if(f.isBlocked) {
-            document.getElementById('chat-footer').style.display = "none";
-            document.getElementById('blocked-notice').style.display = "block";
-        } else {
-            document.getElementById('chat-footer').style.display = "flex";
-            document.getElementById('blocked-notice').style.display = "none";
-        }
-
-        const avatar = document.getElementById('chat-avatar');
-        if(f.pic) { avatar.src = f.pic; avatar.style.display = "block"; } else { avatar.style.display = "none"; }
-        renderMessages();
-        activeConn = peer.connect(f.id);
-        setupConnEvents();
-        setTimeout(() => { if(activeConn.open) activeConn.send({type: 'profile_sync', nick: myData.nick, pic: myData.pic}); }, 1000);
-    }
-
-    function sendMsg() {
-        if(myFriends[currentChatIndex].isBlocked) return;
-        const input = document.getElementById('msg-input');
-        const text = input.value.trim();
-        if (!text || !activeConn) return;
-        activeConn.send(text);
-        myFriends[currentChatIndex].messages.push({ text: text, type: 'sent' });
-        save();
-        renderMessages();
-        input.value = '';
-    }
-
-    // --- DOKUNULMAYAN DİĞER MEKANİKLER ---
-    function handleProfileUpload(input) {
-        const file = input.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => { tempProfilePic = e.target.result; document.getElementById('settings-preview-pic').src = tempProfilePic; };
-            reader.readAsDataURL(file);
-        }
-    }
-    function handleStoryUpload(input) {
-        const file = input.files[0];
-        if (file) {
-            const desc = prompt("Açıklama:");
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const story = { owner: myData.nick, text: desc || "", media: e.target.result, type: file.type.startsWith('video') ? 'video' : 'image', time: Date.now() };
-                myStories.unshift(story); localStorage.setItem('wos_stories', JSON.stringify(myStories)); renderStories();
-            };
-            reader.readAsDataURL(file);
-        }
-    }
-    function openSettings() { document.getElementById('edit-nick').value = myData.nick; document.getElementById('settings-preview-pic').src = myData.pic || ""; tempProfilePic = myData.pic; showScreen('settings-screen'); }
-    function saveSettings() { myData.nick = document.getElementById('edit-nick').value || myData.nick; myData.pic = tempProfilePic; localStorage.setItem('wos_me', JSON.stringify(myData)); loadMain(); showScreen('main-screen'); }
-    function loadMain() { showScreen('main-screen'); const imgHtml = myData.pic ? `<img src="${myData.pic}" class="profile-pic">` : '<div class="profile-pic"></div>'; document.getElementById('user-info').innerHTML = `${imgHtml}<div><b>${myData.nick}</b><br><span class="id-text">${myData.id.replace("WOS-","")}</span></div>`; renderContacts(); renderStories(); }
-    function handleSearch(event) { if (event.key === 'Enter') { const num = document.getElementById('search-id').value.trim(); if (num.length !== 10) return; const sid = "WOS-" + num; if (sid === myData.id) return; if (!myFriends.find(f => f.id === sid)) { myFriends.push({ id: sid, nick: num, messages: [], pic: "", isBlocked: false }); save(); } renderContacts(); document.getElementById('search-id').value = ''; } }
-    function setupConnEvents() { activeConn.on('open', () => { document.getElementById('conn-status').innerText = "Çevrimiçi"; }); activeConn.on('data', (data) => { if(data.type === 'profile_sync') { updateFriendProfile(activeConn.peer, data); } else { handleIncomingMsg(activeConn.peer, data); } }); activeConn.on('close', () => { document.getElementById('conn-status').innerText = "Çevrimdışı"; }); }
-    function updateFriendProfile(peerId, data) { const friend = myFriends.find(f => f.id === peerId); if(friend) { friend.pic = data.pic; save(); if(currentChatIndex !== null && myFriends[currentChatIndex].id === peerId) { const avatar = document.getElementById('chat-avatar'); if(data.pic) { avatar.src = data.pic; avatar.style.display = "block"; } } renderContacts(); } }
-    function handleIncomingMsg(peerId, text) { const friend = myFriends.find(f => f.id === peerId); if(friend && !friend.isBlocked) { friend.messages.push({ text: text, type: 'received' }); save(); if(currentChatIndex !== null && myFriends[currentChatIndex].id === peerId) renderMessages(); } }
-    function renderMessages() { const container = document.getElementById('chat-messages'); container.innerHTML = ''; myFriends[currentChatIndex].messages.forEach(m => { container.innerHTML += `<div class="bubble ${m.type}">${m.text}</div>`; }); container.scrollTop = container.scrollHeight; }
-    function renderStories() { const list = document.getElementById('story-list'); list.innerHTML = `<div class="story-circle" onclick="document.getElementById('story-upload').click()">+ Durum</div>`; myStories.slice(0, 10).forEach(s => { const bg = s.type === 'image' ? `background-image: url('${s.media}')` : `background: #00a884`; list.innerHTML += `<div class="story-circle" style="${bg}" onclick="alert('${s.owner}: ${s.text}')"><div class="story-overlay">${s.owner}</div></div>`; }); }
-    function save() { localStorage.setItem('wos_friends', JSON.stringify(myFriends)); }
-    function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
-    function goBack() { currentChatIndex = null; showScreen('main-screen'); }
-    function logout() { if(confirm("Tüm veriler silinecek?")) { localStorage.clear(); location.reload(); } }
-</script>
-<script src="script.js"></script>
-</body>
-    </html>
-            
+        document.getElementB
