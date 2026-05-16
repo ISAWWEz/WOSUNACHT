@@ -6,8 +6,22 @@ let currentCall = null;
 let incomingCallSignal = null;
 let currentUnknownSenderId = null;
 
-// PeerJS Başlatıcı Ek Yapılandırması
+// DOM tamamen yüklendiğinde buton dinleyicilerini güvenli bir şekilde bağla
+document.addEventListener("DOMContentLoaded", () => {
+    const micBtn = document.getElementById('mic-btn');
+    if (micBtn) {
+        micBtn.addEventListener('mousedown', startAudioRecording);
+        micBtn.addEventListener('mouseup', stopAudioRecording);
+        micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startAudioRecording(); });
+        micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopAudioRecording(); });
+    }
+});
+
+// PeerJS Başlatıcı - myData kontrolü eklendi
 function initPeer() {
+    // Eğer kullanıcı giriş yapmadıysa veya veri yoksa peer'ı başlatma (Hata önleyici)
+    if (!myData || !myData.id) return;
+
     peer = new Peer(myData.id);
     
     peer.on('connection', (conn) => {
@@ -32,13 +46,20 @@ function initPeer() {
         incomingCallSignal = call;
         const isVideoCall = call.options && call.options.metadata && call.options.metadata.type === 'video';
         
-        document.getElementById('call-overlay').style.display = 'flex';
-        document.getElementById('accept-call-btn').style.display = 'flex'; 
-        document.getElementById('call-user-name').innerText = friend ? friend.nick : call.peer.replace("WOS-", "");
-        document.getElementById('call-status-text').innerText = isVideoCall ? "Görüntülü Arama Geliyor..." : "Sesli Arama Geliyor...";
+        const callOverlay = document.getElementById('call-overlay');
+        const acceptBtn = document.getElementById('accept-call-btn');
+        const callUserName = document.getElementById('call-user-name');
+        const callStatusText = document.getElementById('call-status-text');
+
+        if(callOverlay) callOverlay.style.display = 'flex';
+        if(acceptBtn) acceptBtn.style.display = 'flex'; 
+        if(callUserName) callUserName.innerText = friend ? friend.nick : call.peer.replace("WOS-", "");
+        if(callStatusText) callStatusText.innerText = isVideoCall ? "Görüntülü Arama Geliyor..." : "Sesli Arama Geliyor...";
         
-        document.getElementById('remote-video').style.display = 'none';
-        document.getElementById('local-video').style.display = 'none';
+        const remoteVid = document.getElementById('remote-video');
+        const localVid = document.getElementById('local-video');
+        if(remoteVid) remoteVid.style.display = 'none';
+        if(localVid) localVid.style.display = 'none';
     });
 }
 
@@ -49,8 +70,11 @@ function handleIncomingMsg(peerId, data) {
     if (!friend) {
         currentUnknownSenderId = peerId;
         const cleanNumber = peerId.replace("WOS-", "");
-        document.getElementById('unknown-number-text').innerText = "Bilinmeyen Numara: " + cleanNumber;
-        document.getElementById('unknown-alert').style.display = 'flex';
+        
+        const alertText = document.getElementById('unknown-number-text');
+        const alertBox = document.getElementById('unknown-alert');
+        if(alertText) alertText.innerText = "Bilinmeyen Numara: " + cleanNumber;
+        if(alertBox) alertBox.style.display = 'flex';
         
         myFriends.push({ id: peerId, nick: cleanNumber, messages: [], pic: "", isBlocked: false });
         friend = myFriends.find(f => f.id === peerId);
@@ -80,7 +104,8 @@ function handleUnknown(action) {
         save();
         renderContacts();
     }
-    document.getElementById('unknown-alert').style.display = 'none';
+    const alertBox = document.getElementById('unknown-alert');
+    if(alertBox) alertBox.style.display = 'none';
     currentUnknownSenderId = null;
 }
 
@@ -107,8 +132,10 @@ function initiateCall(type) {
 
         if(type === 'video') {
             const localVid = document.getElementById('local-video');
-            localVid.srcObject = stream;
-            localVid.style.display = 'block';
+            if(localVid) {
+                localVid.srcObject = stream;
+                localVid.style.display = 'block';
+            }
         }
 
         const targetId = myFriends[currentChatIndex].id;
@@ -118,8 +145,10 @@ function initiateCall(type) {
             document.getElementById('call-status-text').innerText = "Bağlantı Kuruldu";
             if(type === 'video') {
                 const remoteVid = document.getElementById('remote-video');
-                remoteVid.srcObject = remoteStream;
-                remoteVid.style.display = 'block';
+                if(remoteVid) {
+                    remoteVid.srcObject = remoteStream;
+                    remoteVid.style.display = 'block';
+                }
             }
         });
 
@@ -141,16 +170,20 @@ function acceptIncomingCall() {
 
         if(isVideo) {
             const localVid = document.getElementById('local-video');
-            localVid.srcObject = stream;
-            localVid.style.display = 'block';
+            if(localVid) {
+                localVid.srcObject = stream;
+                localVid.style.display = 'block';
+            }
         }
 
         incomingCallSignal.answer(stream);
         incomingCallSignal.on('stream', remoteStream => {
             if(isVideo) {
                 const remoteVid = document.getElementById('remote-video');
-                remoteVid.srcObject = remoteStream;
-                remoteVid.style.display = 'block';
+                if(remoteVid) {
+                    remoteVid.srcObject = remoteStream;
+                    remoteVid.style.display = 'block';
+                }
             }
         });
 
@@ -171,22 +204,16 @@ function endCall() {
         localStream = null;
     }
     
-    document.getElementById('remote-video').srcObject = null;
-    document.getElementById('local-video').srcObject = null;
-    document.getElementById('remote-video').style.display = 'none';
-    document.getElementById('local-video').style.display = 'none';
-    document.getElementById('call-overlay').style.display = 'none';
+    const remoteVid = document.getElementById('remote-video');
+    const localVid = document.getElementById('local-video');
+    const callOverlay = document.getElementById('call-overlay');
+
+    if(remoteVid) { remoteVid.srcObject = null; remoteVid.style.display = 'none'; }
+    if(localVid) { localVid.srcObject = null; localVid.style.display = 'none'; }
+    if(callOverlay) callOverlay.style.display = 'none';
 }
 
-// --- BAS-KONUŞ SİSTEMİ DİNLEYİCİLERİ ---
-const micBtn = document.getElementById('mic-btn');
-if(micBtn) {
-    micBtn.addEventListener('mousedown', startAudioRecording);
-    micBtn.addEventListener('mouseup', stopAudioRecording);
-    micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startAudioRecording(); });
-    micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopAudioRecording(); });
-}
-
+// --- BAS-KONUŞ SİSTEMİ FONKSİYONLARI ---
 function startAudioRecording() {
     if(currentChatIndex === null || myFriends[currentChatIndex].isBlocked) return;
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
@@ -208,15 +235,16 @@ function startAudioRecording() {
             reader.readAsDataURL(audioBlob);
             stream.getTracks().forEach(track => track.stop());
         };
-        micBtn.classList.add('mic-active');
+        const micBtn = document.getElementById('mic-btn');
+        if(micBtn) micBtn.classList.add('mic-active');
         mediaRecorder.start();
     }).catch(() => alert("Mikrofon izni engellendi!"));
 }
 
 function stopAudioRecording() {
     if (mediaRecorder && mediaRecorder.state === "recording") {
-        micBtn.classList.remove('mic-active');
+        const micBtn = document.getElementById('mic-btn');
+        if(micBtn) micBtn.classList.remove('mic-active');
         mediaRecorder.stop();
     }
 }
-  
